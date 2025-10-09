@@ -9,10 +9,14 @@ def main():
     server_socket = socket.create_server(("localhost", 6379), reuse_port=True)
     # accept connections
     connection, _ = server_socket.accept()
-    data = connection.recv(1024).decode('utf-8')
-    print(data)
-    for item in data.split('\n'):
-        connection.sendall(b"+PONG\r\n")
+
+    while True:
+        data = connection.recv(len(b"*1\r\n$4\r\nPING\r\n")).decode('utf-8')
+        print(f"Received '{data}'")
+        if data == "PING":
+            connection.sendall(b"+PONG\r\n")
+        if data != "PING":
+            break
 
     connection.close()
 
