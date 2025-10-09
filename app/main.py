@@ -24,8 +24,8 @@ def main():
     # connection.close()
 
     threads = []
-    for i in range(2):
-        t = threading.Thread(target=create_connection_and_listen, args=(i,))
+    for i in range(5):
+        t = threading.Thread(target=create_connection_and_listen, args=(server_socket,))
         threads.append(t)
 
     for t in threads:
