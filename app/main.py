@@ -10,12 +10,9 @@ def main():
     # accept connections
     connection, _ = server_socket.accept()
     while True:
-        data = connection.recv(len(b"*1\r\n$4\r\nPING\r\n"))
-        if data.decode('utf-8') != "PING":
-            break
-        connection.sendall(b"+PONG\r\n")
-
-    connection.close()
+        data = connection.recv(1024)
+        if data.decode('utf-8') == "PING":
+            connection.sendall(b"+PONG\r\n")
 
 if __name__ == "__main__":
     main()
