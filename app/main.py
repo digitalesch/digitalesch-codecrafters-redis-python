@@ -1,5 +1,6 @@
 import socket
 import threading
+from datetime import datetime, timedelta
 
 # --- RESP ENCODING / DECODING ---
 
@@ -82,6 +83,27 @@ def encode_array(items: list[str]) -> bytes:
         resp += f"${len(item)}\r\n{item}\r\n"
     return resp.encode()
 
+def set_command(args: list[str]) -> bytes:
+    # simple set command, for key -> value to get inputed into dict
+    if len(args) == 2:
+        thread_safe_write(shared_dict, dict_lock, args[0], args[1])
+        print(shared_dict)
+        return encode_simple_string("OK")
+    print(args)
+    if len(args) == 4:
+        if args[2] == "PX":
+            thread_safe_write(shared_dict, dict_lock, *args)
+            return encode_simple_string("OK")
+
+    raise ValueError(f"Incompatible parameters. Tried {args}, but needed SET <key> <value> <PX>? <seconds>?")
+
+def get_command(args: list[str]) -> bytes:
+    read_value = thread_safe_read(shared_dict, dict_lock, args[0])
+    print(read_value)
+    if len(read_value) == 0:
+        return b"$-1\r\n"
+    return encode_bulk_string(read_value)
+
 def handle_command(args: list[str]) -> bytes:
     """
     Receives list of strings like ['PING'], ['ECHO', 'hey'], etc.
@@ -91,22 +113,15 @@ def handle_command(args: list[str]) -> bytes:
         return encode_simple_string("ERR Empty command")
 
     command = args[0].upper()
-    print(command)
+    print(command, args)
     if command == "PING":
         return encode_simple_string("PONG")
     elif command == "ECHO" and len(args) > 1:
         return encode_bulk_string(args[1])
     if command == "SET" and len(args) > 2:
-        thread_safe_write(shared_dict, dict_lock, args[1], args[2])
-        print(shared_dict)
-        return encode_simple_string("OK")
+        return set_command(args[1:])
     if command == "GET" and len(args) > 1:
-        print(f"GETTING {args}")
-        read_value = thread_safe_read(shared_dict, dict_lock, args[1])
-        print(read_value)
-        if len(read_value) == 0:
-            return b"$-1\r\n"
-        return encode_bulk_string(thread_safe_read(shared_dict, dict_lock, args[1]))
+        return get_command(args[1:])
     # else:
     #     return encode_simple_string(f"ERR Unknown command: {command}")
 
@@ -134,15 +149,23 @@ def client_thread(connection: socket.socket, address):
 shared_dict = {}
 dict_lock = threading.Lock()
 
-def thread_safe_write(shared_dict, dict_lock, key, value):
+def thread_safe_write(shared_dict, dict_lock, key, value, pk=None, milliseconds=None):
     with dict_lock:
-        shared_dict[key] = value
+        shared_dict[key] = {"value": value, "expires_at": datetime.now() + timedelta(milliseconds=int(milliseconds)) if pk else None}
 
 def thread_safe_read(shared_dict, dict_lock, key):
+    read_time = datetime.now()
     with dict_lock:
-        print(f"Searching key {key} in dict: {shared_dict}")
-        dict_value = shared_dict.get(key)
-        return dict_value if dict_value else ""
+        print(f"Searching key {key} in dict: {shared_dict} at {read_time}")
+        if dict_value := shared_dict.get(key):
+            if expired_at := dict_value.get("expires_at"):
+                if expired_at < read_time:
+                    shared_dict.pop(key)
+                    return ""
+            return dict_value.get("value")
+        
+        return ""
+        # return dict_value.get("value") if dict_value else ""
 
 # --- SERVER ---
 
