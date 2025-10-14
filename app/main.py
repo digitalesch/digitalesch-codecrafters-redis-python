@@ -127,7 +127,7 @@ def rpush_command(args: list[str]):
     if read_value := thread_safe_read(shared_dict, dict_lock, args[1]):
         print(f"read value is {read_value}")        
         set_command([args[1]] + [[args[2]]+read_value])
-        return encode_integer(len(args[1:]))
+        return encode_integer(len([[args[2]]+read_value]))
     else:
         set_command([args[1]]+[[args[2]]])
         return encode_integer(1)
