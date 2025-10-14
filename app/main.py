@@ -191,13 +191,17 @@ def handle_command(args: list[str]) -> bytes:
         }
 
         if "PX" in args:
-            print('x')
             kwargs["expiration_milliseconds"] = args[-1]
             kwargs["values"] = args[2:-2]
         return set_command(**kwargs)
     if command == "GET" and len(args) > 1:
         return get_command(args[1:])
     if command == "RPUSH":
+        return rpush_command(args)
+    if command == "LPUSH":
+        # reverses the parameters and applies the RPUSH
+        args = args[0:2] + list(reversed(args[2:]))
+        print(args)
         return rpush_command(args)
     if command == "LRANGE":
         kwargs = {
