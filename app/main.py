@@ -91,19 +91,20 @@ def encode_simple_string(text: str) -> bytes:
 def encode_bulk_string(text: str) -> bytes:
     return f"${len(text)}\r\n{text}\r\n".encode('utf-8')
 
-def set_command(args: list[str]) -> bytes:
+# def set_command(args: list[str], **kwargs) -> bytes:
+def set_command(**kwargs) -> bytes:
     # simple set command, for key -> value to get inputed into dict
-    print(f"Set command: {args}")
-    if len(args) == 2:
-        thread_safe_write(shared_dict, dict_lock, args[0], args[1])
+    print(f"Set command: {kwargs}")
+    if "PX" not in kwargs:
+        thread_safe_write(shared_dict, dict_lock, **kwargs)
         print(shared_dict)
         return encode_simple_string("OK")
-    if len(args) == 4:
-        if args[2] == "PX":
-            thread_safe_write(shared_dict, dict_lock, *args)
-            return encode_simple_string("OK")
+    
+    if "type" in kwargs:
+        thread_safe_write(shared_dict, dict_lock, **kwargs)
+        return encode_simple_string("OK")
 
-    raise ValueError(f"Incompatible parameters. Tried {args}, but needed SET <key> <value> <PX>? <seconds>?")
+    raise ValueError(f"Incompatible parameters. Tried {kwargs}, but needed SET <key> <value> <PX>? <seconds>?")
 
 def get_command(args: list[str]) -> bytes:
     read_value = thread_safe_read(shared_dict, dict_lock, args[0])
@@ -113,7 +114,10 @@ def get_command(args: list[str]) -> bytes:
     if type(read_value) == str:
         return encode_bulk_string(read_value)
     if type(read_value) == list:
-        return encode_array(read_value)
+        if len(read_value) > 1:
+            return encode_array(read_value)
+        if len(read_value) == 1:
+            return encode_bulk_string(read_value[0])
 
 '''
 Idea is to have a key -> pair to append to key
@@ -124,14 +128,21 @@ Idea is to have a key -> pair to append to key
 '''
 def rpush_command(args: list[str]):
     print(f"args are: {args}, need to pass {args[1:]}")
-    if read_value := thread_safe_read(shared_dict, dict_lock, args[1]):
-        print(f"read value is {read_value}")        
-        print(f"setting {[args[1]] + [[args[2]]+read_value]}, {[args[2]]} {read_value} len: {len([args[2]]+read_value)}")
-        set_command([args[1]] + [[args[2]]+read_value])
-        return encode_integer(len([args[2]]+read_value))
+    kwargs = {
+        "key": args[1],
+        "values": args[2:]
+    }
+    
+    if read_value := thread_safe_read(shared_dict, dict_lock, kwargs.get("key")):
+        print(f"appending {kwargs}")
+        kwargs["values"] = kwargs.get("values") + read_value
+        print(kwargs)
+        set_command(**kwargs)
+        return encode_integer(len(kwargs.get("values")))
     else:
-        set_command([args[1]]+[args[2:]])
-        return encode_integer(len([args[1]]+[[args[2]]]))
+        print(f"creating key {kwargs}")
+        set_command(**kwargs)
+        return encode_integer(len(kwargs.get("values")))
 
 def handle_command(args: list[str]) -> bytes:
     """
@@ -148,7 +159,16 @@ def handle_command(args: list[str]) -> bytes:
     elif command == "ECHO" and len(args) > 1:
         return encode_bulk_string(args[1])
     if command == "SET" and len(args) > 2:
-        return set_command(args[1:])
+        kwargs = {
+            "key": args[1],
+            "values": args[2:]
+        }
+
+        if "PX" in args:
+            print('x')
+            kwargs["expiration_milliseconds"] = args[-1]
+            kwargs["values"] = args[2:-2]
+        return set_command(**kwargs)
     if command == "GET" and len(args) > 1:
         return get_command(args[1:])
     if command == "RPUSH":
@@ -180,9 +200,12 @@ def client_thread(connection: socket.socket, address):
 shared_dict = {}
 dict_lock = threading.Lock()
 
-def thread_safe_write(shared_dict, dict_lock, key, value, pk=None, milliseconds=None):
+def thread_safe_write(shared_dict, dict_lock, key, values, expiration_milliseconds=None):
     with dict_lock:
-        shared_dict[key] = {"value": value, "expires_at": datetime.now() + timedelta(milliseconds=int(milliseconds)) if pk else None}
+        print(expiration_milliseconds)
+        if expiration_milliseconds:
+            print("need to expire")
+        shared_dict[key] = {"value": values, "expires_at": datetime.now() + timedelta(milliseconds=int(expiration_milliseconds)) if expiration_milliseconds else None}
 
 def thread_safe_read(shared_dict, dict_lock, key):
     read_time = datetime.now()
