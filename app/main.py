@@ -175,15 +175,21 @@ def llen_command(key: str):
         return encode_integer(str(len(read_value)))
     return encode_integer(0)
 
-def lpop_command(key:str):
+def lpop_command(key:str, elements: int = None):
     if read_value := thread_safe_read(shared_dict, dict_lock, key):
         if len(read_value) > 0:
-            removed_element = read_value.pop(0)
-            return encode_bulk_string(removed_element)
+            if elements:
+                removed_elements = []
+                for _ in range(elements):
+                    removed_elements.append(read_value.pop(0))
+                print(removed_elements)
+                thread_safe_write(shared_dict,dict_lock,key,read_value)
+                return encode_array(removed_elements)
+            else:    
+                removed_element = read_value.pop(0)
+                return encode_bulk_string(removed_element)
         
     return encode_bulk_string("")
-    
-
 
 def handle_command(args: list[str]) -> bytes:
     """
@@ -228,7 +234,13 @@ def handle_command(args: list[str]) -> bytes:
     if command == "LLEN":
         return llen_command(args[1])
     if command == "LPOP":
-        return lpop_command(args[1])
+        kwargs = {
+            "key": args[1]
+        }
+        if len(args[1:]) > 1:
+            kwargs['elements'] = int(args[2])
+        print(kwargs)
+        return lpop_command(**kwargs)
 
 # --- CLIENT HANDLING ---
 
