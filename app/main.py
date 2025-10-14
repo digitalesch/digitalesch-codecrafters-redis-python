@@ -144,6 +144,21 @@ def rpush_command(args: list[str]):
         set_command(**kwargs)
         return encode_integer(len(kwargs.get("values")))
 
+def lrange_command(key: str, start: int, stop: int):
+    empty_array = b'*0\r\n'
+    
+    if read_value := thread_safe_read(shared_dict, dict_lock, key):
+        list_size = len(read_value)
+        print(list_size,read_value, start, stop, key)
+        if start >= list_size or start > stop:
+            return empty_array 
+        if stop >= list_size:
+            stop = list_size
+
+        return encode_array(read_value[start:(stop+1)])
+    
+    return empty_array
+
 def handle_command(args: list[str]) -> bytes:
     """
     Receives list of strings like ['PING'], ['ECHO', 'hey'], etc.
@@ -173,8 +188,13 @@ def handle_command(args: list[str]) -> bytes:
         return get_command(args[1:])
     if command == "RPUSH":
         return rpush_command(args)
-    # else:
-    #     return encode_simple_string(f"ERR Unknown command: {command}")
+    if command == "LRANGE":
+        kwargs = {
+            "key": args[1],
+            "start": int(args[2]),
+            "stop": int(args[3])
+        }
+        return lrange_command(**kwargs)
 
 # --- CLIENT HANDLING ---
 
@@ -202,9 +222,6 @@ dict_lock = threading.Lock()
 
 def thread_safe_write(shared_dict, dict_lock, key, values, expiration_milliseconds=None):
     with dict_lock:
-        print(expiration_milliseconds)
-        if expiration_milliseconds:
-            print("need to expire")
         shared_dict[key] = {"value": values, "expires_at": datetime.now() + timedelta(milliseconds=int(expiration_milliseconds)) if expiration_milliseconds else None}
 
 def thread_safe_read(shared_dict, dict_lock, key):
@@ -219,7 +236,6 @@ def thread_safe_read(shared_dict, dict_lock, key):
             return dict_value.get("value")
         
         return ""
-        # return dict_value.get("value") if dict_value else ""
 
 # --- SERVER ---
 
