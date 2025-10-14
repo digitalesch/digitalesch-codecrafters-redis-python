@@ -170,6 +170,11 @@ def lrange_command(key: str, start: int, stop: int):
     
     return empty_array
 
+def llen_command(key: str):
+    if read_value := thread_safe_read(shared_dict, dict_lock, key):
+        return encode_integer(str(len(read_value)))
+    return encode_integer(0)
+
 def handle_command(args: list[str]) -> bytes:
     """
     Receives list of strings like ['PING'], ['ECHO', 'hey'], etc.
@@ -200,8 +205,8 @@ def handle_command(args: list[str]) -> bytes:
         return rpush_command(args)
     if command == "LPUSH":
         # reverses the parameters and applies the RPUSH
-        args = args[0:2] + list(reversed(args[2:]))
         print(args)
+        args = args[0:2] + list(reversed(args[2:]))
         return rpush_command(args)
     if command == "LRANGE":
         kwargs = {
@@ -210,6 +215,8 @@ def handle_command(args: list[str]) -> bytes:
             "stop": int(args[3])
         }
         return lrange_command(**kwargs)
+    if command == "LLEN":
+        return llen_command(args[1])
 
 # --- CLIENT HANDLING ---
 
