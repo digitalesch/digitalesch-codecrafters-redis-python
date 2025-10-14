@@ -175,6 +175,16 @@ def llen_command(key: str):
         return encode_integer(str(len(read_value)))
     return encode_integer(0)
 
+def lpop_command(key:str):
+    if read_value := thread_safe_read(shared_dict, dict_lock, key):
+        if len(read_value) > 0:
+            removed_element = read_value.pop(0)
+            return encode_bulk_string(removed_element)
+        
+    return encode_bulk_string("")
+    
+
+
 def handle_command(args: list[str]) -> bytes:
     """
     Receives list of strings like ['PING'], ['ECHO', 'hey'], etc.
@@ -217,6 +227,8 @@ def handle_command(args: list[str]) -> bytes:
         return lrange_command(**kwargs)
     if command == "LLEN":
         return llen_command(args[1])
+    if command == "LPOP":
+        return lpop_command(args[1])
 
 # --- CLIENT HANDLING ---
 
