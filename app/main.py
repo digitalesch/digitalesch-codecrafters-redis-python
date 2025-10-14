@@ -148,13 +148,24 @@ def lrange_command(key: str, start: int, stop: int):
     empty_array = b'*0\r\n'
     
     if read_value := thread_safe_read(shared_dict, dict_lock, key):
+        # gets size of list inputs
         list_size = len(read_value)
-        print(list_size,read_value, start, stop, key)
+
+        # tries to reverse the index logic
+        if abs(start) > list_size:
+            start = 0 
+        if start < 0:
+            start += list_size
+        if stop < 0:
+            stop += list_size
+        
+        
         if start >= list_size or start > stop:
             return empty_array 
         if stop >= list_size:
             stop = list_size
 
+        print(list_size,read_value, start, stop, key)
         return encode_array(read_value[start:(stop+1)])
     
     return empty_array
