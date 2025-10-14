@@ -50,9 +50,13 @@ def parse_bulk_string(binary_array: bytes):
     # null string
     return b'$-1\r\n'
 
+def parse_integer(binary_string: bytes):
+    pass
+
 def parse_resp_strings(binary_string: bytes):
     operation_function_map = {
         1: parse_simple_string,
+        3: parse_integer,
         4: parse_bulk_string,
         5: parse_array
     }
@@ -70,26 +74,30 @@ def parse_resp_strings(binary_string: bytes):
             raise ValueError("Invalid RESP format")
 
 # --- COMMAND HANDLING ---
+def encode_array(list_to_encode: list[str]) -> bytes:
+    buffer = f"*{len(list_to_encode)}\r\n"
+    for item in list_to_encode:
+        buffer += f"${len(item)}\r\n{item}\r\n"
+    
+    return buffer.encode('utf-8')
+
+def encode_integer(integer_to_encode: int) -> bytes:
+    #:[<+|->]<value>\r\n
+    return f":{str(integer_to_encode)}\r\n".encode("utf-8")
 
 def encode_simple_string(text: str) -> bytes:
-    return f"+{text}\r\n".encode()
+    return f"+{text}\r\n".encode('utf-8')
 
 def encode_bulk_string(text: str) -> bytes:
-    return f"${len(text)}\r\n{text}\r\n".encode()
-
-def encode_array(items: list[str]) -> bytes:
-    resp = f"*{len(items)}\r\n"
-    for item in items:
-        resp += f"${len(item)}\r\n{item}\r\n"
-    return resp.encode()
+    return f"${len(text)}\r\n{text}\r\n".encode('utf-8')
 
 def set_command(args: list[str]) -> bytes:
     # simple set command, for key -> value to get inputed into dict
+    print(f"Set command: {args}")
     if len(args) == 2:
         thread_safe_write(shared_dict, dict_lock, args[0], args[1])
         print(shared_dict)
         return encode_simple_string("OK")
-    print(args)
     if len(args) == 4:
         if args[2] == "PX":
             thread_safe_write(shared_dict, dict_lock, *args)
@@ -102,7 +110,27 @@ def get_command(args: list[str]) -> bytes:
     print(read_value)
     if len(read_value) == 0:
         return b"$-1\r\n"
-    return encode_bulk_string(read_value)
+    if type(read_value) == str:
+        return encode_bulk_string(read_value)
+    if type(read_value) == list:
+        return encode_array(read_value)
+
+'''
+Idea is to have a key -> pair to append to key
+1. use get_command to check if key exists
+1a. if not create the list
+1b. if positive, append to list
+2. return list size
+'''
+def rpush_command(args: list[str]):
+    print(f"args are: {args}, need to pass {args[1:]}")
+    if read_value := thread_safe_read(shared_dict, dict_lock, args[1]):
+        print(f"read value is {read_value}")        
+        set_command([args[1]] + [[args[2]]+read_value])
+        return encode_integer(len(args[1:]))
+    else:
+        set_command([args[1]]+[[args[2]]])
+        return encode_integer(1)
 
 def handle_command(args: list[str]) -> bytes:
     """
@@ -122,6 +150,8 @@ def handle_command(args: list[str]) -> bytes:
         return set_command(args[1:])
     if command == "GET" and len(args) > 1:
         return get_command(args[1:])
+    if command == "RPUSH":
+        return rpush_command(args)
     # else:
     #     return encode_simple_string(f"ERR Unknown command: {command}")
 
