@@ -18,7 +18,7 @@ def get_resp_operation(binary_char: bytes):
 def parse_array(binary_array: bytes):
     array_size = int(binary_array[0][1:])
     if (array_size * 2 + 2) != len(binary_array):
-        raise ValueError(f"Not enought values in array, should contain {(array_size * 2 + 2)} elements, but has {len(binary_array)} when parsed into {binary_array}!")
+        raise ValueError(f"Not enough values in array, should contain {(array_size * 2 + 2)} elements, but has {len(binary_array)} when parsed into {binary_array}!")
     
     array_strings = binary_array[1:(array_size*2+1)]
 
@@ -228,6 +228,22 @@ def type_command(args: list[str]):
     if chr(data[0]) == "$":
         return encode_simple_string('string')
 
+def xadd_command(key: str, entry_id: str, values: list[str], **kwargs):
+    # checks for key -> pair value
+    # temp_dict = []
+    # temp_dict = {}
+    # for i in range(0,len(values),2):
+    # print(values[i], values[i+1])
+        # temp_dict.append({entry_id: {values[i]: values[i+1]}})
+    print({values[i]: values[i+1] for i in range(0,len(values),2)})
+    temp_dict = {entry_id: {values[i]: values[i+1] for i in range(0,len(values),2)}}
+
+
+    print(temp_dict)
+    rpush_command(['RPUSH',key,temp_dict])
+    
+    return encode_bulk_string(entry_id)
+
 def handle_command(args: list[str], address) -> bytes:
     """
     Receives list of strings like ['PING'], ['ECHO', 'hey'], etc.
@@ -288,6 +304,13 @@ def handle_command(args: list[str], address) -> bytes:
         return blpop_command(**kwargs)
     if command == "TYPE":
         return type_command(args[1:])
+    if command == "XADD":
+        kwargs = {
+            "key": args[1],
+            "entry_id": args[2],
+            "values": args[3:]
+        }
+        return xadd_command(**kwargs)
 
 # --- CLIENT HANDLING ---
 def client_thread(connection: socket.socket, address):
