@@ -249,6 +249,9 @@ def type_command(args: list[str]):
     #     return encode_simple_string('string')
 
 def xadd_command(key: str, entry_id: str, values: list[str], **kwargs):
+    print(entry_id, entry_id.split(b"-"))
+
+
     entries = {values[i]: values[i+1] for i in range(0,len(values),2)}
     print(
         {
@@ -355,16 +358,8 @@ def client_thread(connection: socket.socket, address):
         connection.close()
         print(f"[DISCONNECT] {address}")
 
-# --- THREAD LOCK ---
+# --- THREAD LOCKS ---
 shared_dict = {}
-
-# thread blocking pool will handle the events for the blpop
-# the pool will have {'address': <address>, 'time_to_block': <int>, 'blocked_at': <timestamp>} 
-# so that the pool always stay ordered with the one that waited the most first
-# thread_events_blocking_pool = {
-#     "size": 0,
-#     "pool": []
-# }
 thread_events_blocking_pool = []
 thread_lock = threading.Lock()
 
