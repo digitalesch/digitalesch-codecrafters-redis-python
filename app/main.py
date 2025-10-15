@@ -275,7 +275,7 @@ def handle_command(args: list[str], address) -> bytes:
     if command == "BLPOP":
         kwargs = {
             "key": args[1],
-            "timeout": int(args[2]),
+            "timeout": float(args[2]),
             "address": address
         }
         return blpop_command(**kwargs)
