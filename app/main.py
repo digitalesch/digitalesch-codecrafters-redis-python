@@ -220,6 +220,14 @@ def blpop_command(key: str, timeout: int, address):
     
     return encode_array(None)
 
+def type_command(args: list[str]):
+    data = get_command(args)
+    print(f"data is {data}")
+    if data == "$-1\r\n":
+        return encode_simple_string('none')
+    if chr(data[0]) == "$":
+        return encode_simple_string('string')
+
 def handle_command(args: list[str], address) -> bytes:
     """
     Receives list of strings like ['PING'], ['ECHO', 'hey'], etc.
@@ -271,7 +279,6 @@ def handle_command(args: list[str], address) -> bytes:
             kwargs['elements'] = int(args[2])
         print(kwargs)
         return lpop_command(**kwargs)
-    
     if command == "BLPOP":
         kwargs = {
             "key": args[1],
@@ -279,6 +286,8 @@ def handle_command(args: list[str], address) -> bytes:
             "address": address
         }
         return blpop_command(**kwargs)
+    if command == "TYPE":
+        return type_command(args[1:])
 
 # --- CLIENT HANDLING ---
 def client_thread(connection: socket.socket, address):
