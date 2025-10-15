@@ -231,7 +231,6 @@ def xadd_command(key: str, entry_id: str, values: list[str], **kwargs):
     }
 
     if read_value := thread_safe_read(shared_dict, thread_lock, key):
-        # latest_entry_id = read_value[0].keys()
         latest_entry_id = next(iter(read_value[0]))
         source_timestamp, source_sequence_num = latest_entry_id.split('-')
         target_timestamp, target_sequence_num = entry_id.split('-')
@@ -239,8 +238,6 @@ def xadd_command(key: str, entry_id: str, values: list[str], **kwargs):
             return encode_simple_error("ERR The ID specified in XADD must be greater than 0-0")
         if source_timestamp > target_timestamp or source_sequence_num >= target_sequence_num:
             return encode_simple_error("ERR The ID specified in XADD is equal or smaller than the target stream top item")
-        # print(f"found {latest_entry_id}, {timestamp}, {id}")
-        # read_value.get("value").keys()
 
     rpush_command(['RPUSH',key,temp_dict])
     
