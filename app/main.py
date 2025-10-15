@@ -95,13 +95,15 @@ def encode_simple_string(text: str) -> bytes:
 def encode_bulk_string(text: str) -> bytes:
     return f"${len(text)}\r\n{text}\r\n".encode('utf-8')
 
+def encode_simple_error(text: str) -> bytes:
+    return f"-{text}\r\n".encode('utf-8')
+
 # def set_command(args: list[str], **kwargs) -> bytes:
 def set_command(**kwargs) -> bytes:
     # simple set command, for key -> value to get inputed into dict
-    print(f"Set command: {kwargs}")
+    print(f"[SET] {kwargs}")
     if "PX" not in kwargs:
         thread_safe_write(shared_dict, thread_lock, **kwargs)
-        print(shared_dict)
         return encode_simple_string("OK")
     
     if "type" in kwargs:
@@ -110,22 +112,8 @@ def set_command(**kwargs) -> bytes:
 
     raise ValueError(f"Incompatible parameters. Tried {kwargs}, but needed SET <key> <value> <PX>? <seconds>?")
 
-def get_command(args: list[str]) -> bytes:
-    read_value = thread_safe_read(shared_dict, thread_lock, args[0])
-    print(read_value)
-    if len(read_value) == 0:
-        return b"$-1\r\n"
-    if type(read_value) == str:
-        return encode_bulk_string(read_value)
-    if type(read_value) == list:
-        if len(read_value) > 1:
-            return encode_array(read_value)
-        if len(read_value) == 1:
-            return encode_bulk_string(read_value[0])
-    if type(read_value) == dict:
-        return encode_array(read_value)
-
 def get_command(args: list[str]) -> dict:
+    print(f"[GET]: {args}")
     read_value = thread_safe_read(shared_dict, thread_lock, args[0])
     print(read_value)
     if len(read_value) == 0:
@@ -134,7 +122,6 @@ def get_command(args: list[str]) -> dict:
         return {"type": "string", "value": encode_bulk_string(read_value)}
     if type(read_value) == list:
         if type(read_value[0]) == dict:
-            print("stream")
             return {"type": "stream", "value": encode_array(read_value)}
         if len(read_value) > 1:
             return {"type": "array", "value": encode_array(read_value)}
@@ -150,7 +137,7 @@ Idea is to have a key -> pair to append to key
 2. return list size
 '''
 def rpush_command(args: list[str]):
-    print(f"args are: {args}, need to pass {args[1:]}")
+    print(f"[RPUSH]: {args[1:]}")
     
     event = read_blocking_pool()
 
@@ -160,15 +147,12 @@ def rpush_command(args: list[str]):
     }
     
     if read_value := thread_safe_read(shared_dict, thread_lock, kwargs.get("key")):
-        print(f"appending {kwargs}")
         kwargs["values"] = kwargs.get("values") + read_value
-        print(kwargs)
         set_command(**kwargs)
         if event:
             event.get("event").set()
         return encode_integer(len(kwargs.get("values")))
     else:
-        print(f"creating key {kwargs}")
         set_command(**kwargs)
         if event:
             event.get("event").set()
@@ -195,7 +179,6 @@ def lrange_command(key: str, start: int, stop: int):
         if stop >= list_size:
             stop = list_size
 
-        print(list_size,read_value, start, stop, key)
         return encode_array(read_value[start:(stop+1)])
     
     return empty_array
@@ -212,7 +195,6 @@ def lpop_command(key:str, elements: int = None):
                 removed_elements = []
                 for _ in range(elements):
                     removed_elements.append(read_value.pop(0))
-                print(removed_elements)
                 thread_safe_write(shared_dict,thread_lock,key,read_value)
                 return encode_array(removed_elements)
             else:    
@@ -226,46 +208,38 @@ def blpop_command(key: str, timeout: int, address):
     event = threading.Event()
     
     add_thread_to_blocking_pool(thread_events_blocking_pool,event,address)
-
-    print(key, address, thread_events_blocking_pool)
     
     wait_for = timeout if timeout > 0 else None
 
     if event.wait(timeout=wait_for):
         encoded_array = f"*2\r\n${len(key)}\r\n{key}\r\n".encode('utf-8')
         encoded_array += lpop_command(key)
-        print(f"BLPOP was encoded into '{encoded_array}'")
+        print(f"[BLPOP]: '{encoded_array}'")
         return encoded_array
     
     return encode_array(None)
 
 def type_command(args: list[str]):
     data = get_command(args)
-    print(f"data is {data}")
+    print(f"[TYPE]: {data}")
     return encode_simple_string(data.get("type"))
-    # if data == b"$-1\r\n":
-    #     return encode_simple_string('none')
-    # if chr(data[0]) == "$":
-    #     return encode_simple_string('string')
+
 
 def xadd_command(key: str, entry_id: str, values: list[str], **kwargs):
-    print(entry_id, entry_id.split(b"-"))
-
-
-    entries = {values[i]: values[i+1] for i in range(0,len(values),2)}
-    print(
-        {
-            # "created_at": datetime.now(), 
-            entry_id: entries
-        }
-    )
     temp_dict = {
-        # "created_at": datetime.now(), 
-        entry_id: entries
+        entry_id: {values[i]: values[i+1] for i in range(0,len(values),2)}
     }
 
+    if read_value := thread_safe_read(shared_dict, thread_lock, key):
+        # latest_entry_id = read_value[0].keys()
+        latest_entry_id = next(iter(read_value[0]))
+        source_timestamp, source_id = latest_entry_id.split('-')
+        target_timestamp, target_id = entry_id.split('-')
+        if source_timestamp >= target_timestamp or source_id >= target_id:
+            return encode_simple_error("ERR The ID specified in XADD is equal or smaller than the target stream top item")
+        # print(f"found {latest_entry_id}, {timestamp}, {id}")
+        # read_value.get("value").keys()
 
-    print(temp_dict)
     rpush_command(['RPUSH',key,temp_dict])
     
     return encode_bulk_string(entry_id)
@@ -279,7 +253,6 @@ def handle_command(args: list[str], address) -> bytes:
         return encode_simple_string("ERR Empty command")
 
     command = args[0].upper()
-    print(command, args)
     if command == "PING":
         return encode_simple_string("PONG")
     elif command == "ECHO" and len(args) > 1:
@@ -296,13 +269,11 @@ def handle_command(args: list[str], address) -> bytes:
             kwargs["values"] = args[2:-2]
         return set_command(**kwargs)
     if command == "GET" and len(args) > 1:
-        print(f"GETTING: {get_command(args[1:]).get("value")}")
         return get_command(args[1:]).get("value")
     if command == "RPUSH":
         return rpush_command(args)
     if command == "LPUSH":
         # reverses the parameters and applies the RPUSH
-        print(args)
         args = args[0:2] + list(reversed(args[2:]))
         return rpush_command(args)
     if command == "LRANGE":
@@ -320,7 +291,6 @@ def handle_command(args: list[str], address) -> bytes:
         }
         if len(args[1:]) > 1:
             kwargs['elements'] = int(args[2])
-        print(kwargs)
         return lpop_command(**kwargs)
     if command == "BLPOP":
         kwargs = {
@@ -342,7 +312,7 @@ def handle_command(args: list[str], address) -> bytes:
 # --- CLIENT HANDLING ---
 def client_thread(connection: socket.socket, address):
     try:
-        print(f"[CONNECT] {address}")
+        print(f"[CONNECT]: {address}")
         buffer = b""
         while True:
             part = connection.recv(4096)
@@ -350,13 +320,14 @@ def client_thread(connection: socket.socket, address):
                 break
             buffer += part
             parsed_buffer = parse_resp_strings(buffer)
-            print(f"[RECV] {parsed_buffer}")
+            print(f"[RECV]: {parsed_buffer}")
             resp = handle_command(parsed_buffer, address)
+            print(f"[SEND]: {resp}")
             connection.sendall(resp)
             buffer = b""  # Reset buffer after processing
     finally:
         connection.close()
-        print(f"[DISCONNECT] {address}")
+        print(f"[DISCONNECT]: {address}")
 
 # --- THREAD LOCKS ---
 shared_dict = {}
@@ -388,7 +359,7 @@ def thread_safe_write(shared_dict, thread_lock, key, values, expiration_millisec
 def thread_safe_read(shared_dict, thread_lock, key):
     read_time = datetime.now()
     with thread_lock:
-        print(f"Searching key {key} in dict: {shared_dict} at {read_time}")
+        print(f"[SEARCH]: {key} in {shared_dict}: @{read_time}")
         if dict_value := shared_dict.get(key):
             if expired_at := dict_value.get("expires_at"):
                 if expired_at < read_time:
