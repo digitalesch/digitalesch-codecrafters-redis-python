@@ -17,6 +17,7 @@ messages = [
     # b"*2\r\n$4\r\nTYPE\r\n$5\r\nfruit\r\n",
 
     # tests out the XADD command
+    # b"*7\r\n$4\r\nXADD\r\n$5\r\nmango\r\n$3\r\n0-0\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$3\r\nbar\r\n$3\r\nfoo\r\n",
     b"*7\r\n$4\r\nXADD\r\n$5\r\nmango\r\n$15\r\n1697639913000-0\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$3\r\nbar\r\n$3\r\nfoo\r\n",
     # b"*5\r\n$4\r\nXADD\r\n$5\r\nmango\r\n$3\r\n0-2\r\n$3\r\neit\r\n$3\r\nbar\r\n",
     # b"*2\r\n$4\r\nTYPE\r\n$5\r\nmango\r\n",
