@@ -122,6 +122,25 @@ def get_command(args: list[str]) -> bytes:
             return encode_array(read_value)
         if len(read_value) == 1:
             return encode_bulk_string(read_value[0])
+    if type(read_value) == dict:
+        return encode_array(read_value)
+
+def get_command(args: list[str]) -> dict:
+    read_value = thread_safe_read(shared_dict, thread_lock, args[0])
+    print(read_value)
+    if len(read_value) == 0:
+        return {"type": "none", "value": b"$-1\r\n"}
+    if type(read_value) == str:
+        return {"type": "string", "value": encode_bulk_string(read_value)}
+    if type(read_value) == list:
+        if type(read_value[0]) == dict:
+            print("stream")
+            return {"type": "stream", "value": encode_array(read_value)}
+        if len(read_value) > 1:
+            return {"type": "array", "value": encode_array(read_value)}
+        if len(read_value) == 1:
+            return {"type": "string", "value": encode_bulk_string(read_value[0])}
+    
 
 '''
 Idea is to have a key -> pair to append to key
@@ -223,20 +242,24 @@ def blpop_command(key: str, timeout: int, address):
 def type_command(args: list[str]):
     data = get_command(args)
     print(f"data is {data}")
-    if data == b"$-1\r\n":
-        return encode_simple_string('none')
-    if chr(data[0]) == "$":
-        return encode_simple_string('string')
+    return encode_simple_string(data.get("type"))
+    # if data == b"$-1\r\n":
+    #     return encode_simple_string('none')
+    # if chr(data[0]) == "$":
+    #     return encode_simple_string('string')
 
 def xadd_command(key: str, entry_id: str, values: list[str], **kwargs):
-    # checks for key -> pair value
-    # temp_dict = []
-    # temp_dict = {}
-    # for i in range(0,len(values),2):
-    # print(values[i], values[i+1])
-        # temp_dict.append({entry_id: {values[i]: values[i+1]}})
-    print({values[i]: values[i+1] for i in range(0,len(values),2)})
-    temp_dict = {entry_id: {values[i]: values[i+1] for i in range(0,len(values),2)}}
+    entries = {values[i]: values[i+1] for i in range(0,len(values),2)}
+    print(
+        {
+            # "created_at": datetime.now(), 
+            entry_id: entries
+        }
+    )
+    temp_dict = {
+        # "created_at": datetime.now(), 
+        entry_id: entries
+    }
 
 
     print(temp_dict)
@@ -270,7 +293,8 @@ def handle_command(args: list[str], address) -> bytes:
             kwargs["values"] = args[2:-2]
         return set_command(**kwargs)
     if command == "GET" and len(args) > 1:
-        return get_command(args[1:])
+        print(f"GETTING: {get_command(args[1:]).get("value")}")
+        return get_command(args[1:]).get("value")
     if command == "RPUSH":
         return rpush_command(args)
     if command == "LPUSH":
