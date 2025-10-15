@@ -18,14 +18,15 @@ messages = [
 
     # tests out the XADD command
     # b"*7\r\n$4\r\nXADD\r\n$5\r\nmango\r\n$3\r\n0-0\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$3\r\nbar\r\n$3\r\nfoo\r\n",
-    b"*7\r\n$4\r\nXADD\r\n$5\r\nmango\r\n$15\r\n1697639913000-0\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$3\r\nbar\r\n$3\r\nfoo\r\n",
+    b"*5\r\n$4\r\nXADD\r\n$5\r\ngrape\r\n$3\r\n1-1\r\n$6\r\norange\r\n$5\r\napple\r\n",
+    b"*5\r\n$4\r\nXADD\r\n$5\r\ngrape\r\n$3\r\n1-2\r\n$9\r\npineapple\r\n$6\r\nbanana\r\n",
     # b"*5\r\n$4\r\nXADD\r\n$5\r\nmango\r\n$3\r\n0-2\r\n$3\r\neit\r\n$3\r\nbar\r\n",
     # b"*2\r\n$4\r\nTYPE\r\n$5\r\nmango\r\n",
     # b"*2\r\n$4\r\nTYPE\r\n$5\r\nmangu\r\n",
     # b"*2\r\n$3\r\nGET\r\n$10\r\nstrawberry\r\n",
-    b"*7\r\n$4\r\nXADD\r\n$5\r\nmango\r\n$15\r\n1697639913001-1\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$3\r\nbar\r\n$3\r\nfoo\r\n",
-    b"*7\r\n$4\r\nXADD\r\n$5\r\nmango\r\n$15\r\n1697639913004-2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$3\r\nbar\r\n$3\r\nfoo\r\n",
-    b"*2\r\n$3\r\nGET\r\n$5\r\nmango\r\n",
+    # b"*7\r\n$4\r\nXADD\r\n$5\r\nmango\r\n$15\r\n1697639913001-1\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$3\r\nbar\r\n$3\r\nfoo\r\n",
+    # b"*7\r\n$4\r\nXADD\r\n$5\r\nmango\r\n$15\r\n1697639913004-2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$3\r\nbar\r\n$3\r\nfoo\r\n",
+    # b"*2\r\n$3\r\nGET\r\n$5\r\nmango\r\n",
 
     # b"*5\r\n$3\r\nSET\r\n$10\r\nstrawberry\r\n$4\r\npear\r\n$2\r\nPX\r\n$3\r\n100\r\n",
     # b"*4\r\n$6\r\nLRANGE\r\n$5\r\nmango\r\n$1\r\n0\r\n$1\r\n3\r\n",
