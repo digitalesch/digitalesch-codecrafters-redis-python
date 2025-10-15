@@ -75,9 +75,13 @@ def parse_resp_strings(binary_string: bytes):
 
 # --- COMMAND HANDLING ---
 def encode_array(list_to_encode: list[str]) -> bytes:
-    buffer = f"*{len(list_to_encode)}\r\n"
-    for item in list_to_encode:
-        buffer += f"${len(item)}\r\n{item}\r\n"
+    if list_to_encode:
+        buffer = f"*{len(list_to_encode)}\r\n"
+        for item in list_to_encode:
+            buffer += f"${len(item)}\r\n{item}\r\n"
+    
+    if not list_to_encode:
+        buffer = "*-1\r\n"
     
     return buffer.encode('utf-8')
 
@@ -96,18 +100,18 @@ def set_command(**kwargs) -> bytes:
     # simple set command, for key -> value to get inputed into dict
     print(f"Set command: {kwargs}")
     if "PX" not in kwargs:
-        thread_safe_write(shared_dict, dict_lock, **kwargs)
+        thread_safe_write(shared_dict, thread_lock, **kwargs)
         print(shared_dict)
         return encode_simple_string("OK")
     
     if "type" in kwargs:
-        thread_safe_write(shared_dict, dict_lock, **kwargs)
+        thread_safe_write(shared_dict, thread_lock, **kwargs)
         return encode_simple_string("OK")
 
     raise ValueError(f"Incompatible parameters. Tried {kwargs}, but needed SET <key> <value> <PX>? <seconds>?")
 
 def get_command(args: list[str]) -> bytes:
-    read_value = thread_safe_read(shared_dict, dict_lock, args[0])
+    read_value = thread_safe_read(shared_dict, thread_lock, args[0])
     print(read_value)
     if len(read_value) == 0:
         return b"$-1\r\n"
@@ -128,26 +132,33 @@ Idea is to have a key -> pair to append to key
 '''
 def rpush_command(args: list[str]):
     print(f"args are: {args}, need to pass {args[1:]}")
+    
+    event = read_blocking_pool()
+
     kwargs = {
         "key": args[1],
         "values": args[2:]
     }
     
-    if read_value := thread_safe_read(shared_dict, dict_lock, kwargs.get("key")):
+    if read_value := thread_safe_read(shared_dict, thread_lock, kwargs.get("key")):
         print(f"appending {kwargs}")
         kwargs["values"] = kwargs.get("values") + read_value
         print(kwargs)
         set_command(**kwargs)
+        if event:
+            event.get("event").set()
         return encode_integer(len(kwargs.get("values")))
     else:
         print(f"creating key {kwargs}")
         set_command(**kwargs)
+        if event:
+            event.get("event").set()
         return encode_integer(len(kwargs.get("values")))
 
 def lrange_command(key: str, start: int, stop: int):
     empty_array = b'*0\r\n'
     
-    if read_value := thread_safe_read(shared_dict, dict_lock, key):
+    if read_value := thread_safe_read(shared_dict, thread_lock, key):
         # gets size of list inputs
         list_size = len(read_value)
 
@@ -171,27 +182,45 @@ def lrange_command(key: str, start: int, stop: int):
     return empty_array
 
 def llen_command(key: str):
-    if read_value := thread_safe_read(shared_dict, dict_lock, key):
+    if read_value := thread_safe_read(shared_dict, thread_lock, key):
         return encode_integer(str(len(read_value)))
     return encode_integer(0)
 
 def lpop_command(key:str, elements: int = None):
-    if read_value := thread_safe_read(shared_dict, dict_lock, key):
+    if read_value := thread_safe_read(shared_dict, thread_lock, key):
         if len(read_value) > 0:
             if elements:
                 removed_elements = []
                 for _ in range(elements):
                     removed_elements.append(read_value.pop(0))
                 print(removed_elements)
-                thread_safe_write(shared_dict,dict_lock,key,read_value)
+                thread_safe_write(shared_dict,thread_lock,key,read_value)
                 return encode_array(removed_elements)
             else:    
                 removed_element = read_value.pop(0)
+                thread_safe_write(shared_dict,thread_lock,key,read_value)
                 return encode_bulk_string(removed_element)
         
     return encode_bulk_string("")
 
-def handle_command(args: list[str]) -> bytes:
+def blpop_command(key: str, timeout: int, address):
+    event = threading.Event()
+    
+    add_thread_to_blocking_pool(thread_events_blocking_pool,event,address)
+
+    print(key, address, thread_events_blocking_pool)
+    
+    wait_for = timeout if timeout > 0 else None
+
+    if event.wait(timeout=wait_for):
+        encoded_array = f"*2\r\n${len(key)}\r\n{key}\r\n".encode('utf-8')
+        encoded_array += lpop_command(key)
+        print(f"BLPOP was encoded into '{encoded_array}'")
+        return encoded_array
+    
+    return encode_array(None)
+
+def handle_command(args: list[str], address) -> bytes:
     """
     Receives list of strings like ['PING'], ['ECHO', 'hey'], etc.
     Returns encoded RESP response.
@@ -208,7 +237,8 @@ def handle_command(args: list[str]) -> bytes:
     if command == "SET" and len(args) > 2:
         kwargs = {
             "key": args[1],
-            "values": args[2:]
+            "values": args[2:],
+            "address": address
         }
 
         if "PX" in args:
@@ -241,9 +271,16 @@ def handle_command(args: list[str]) -> bytes:
             kwargs['elements'] = int(args[2])
         print(kwargs)
         return lpop_command(**kwargs)
+    
+    if command == "BLPOP":
+        kwargs = {
+            "key": args[1],
+            "timeout": int(args[2]),
+            "address": address
+        }
+        return blpop_command(**kwargs)
 
 # --- CLIENT HANDLING ---
-
 def client_thread(connection: socket.socket, address):
     try:
         print(f"[CONNECT] {address}")
@@ -255,7 +292,7 @@ def client_thread(connection: socket.socket, address):
             buffer += part
             parsed_buffer = parse_resp_strings(buffer)
             print(f"[RECV] {parsed_buffer}")
-            resp = handle_command(parsed_buffer)
+            resp = handle_command(parsed_buffer, address)
             connection.sendall(resp)
             buffer = b""  # Reset buffer after processing
     finally:
@@ -264,15 +301,42 @@ def client_thread(connection: socket.socket, address):
 
 # --- THREAD LOCK ---
 shared_dict = {}
-dict_lock = threading.Lock()
 
-def thread_safe_write(shared_dict, dict_lock, key, values, expiration_milliseconds=None):
-    with dict_lock:
+# thread blocking pool will handle the events for the blpop
+# the pool will have {'address': <address>, 'time_to_block': <int>, 'blocked_at': <timestamp>} 
+# so that the pool always stay ordered with the one that waited the most first
+# thread_events_blocking_pool = {
+#     "size": 0,
+#     "pool": []
+# }
+thread_events_blocking_pool = []
+thread_lock = threading.Lock()
+
+def add_thread_to_blocking_pool(thread_events_blocking_pool: list, event: threading.Event, address):
+    with thread_lock:
+        thread_block_data = {
+            "address":address, 
+            "blocked_at": datetime.now(),
+            "event": event
+        }
+        thread_events_blocking_pool.append(thread_block_data)
+
+def remove_thread_from_blocking_pool(thread_events_blocking_pool: list):
+    with thread_lock:
+        thread_events_blocking_pool.pop(0)
+
+def read_blocking_pool():
+    with thread_lock:
+        if len(thread_events_blocking_pool) > 0:
+            return thread_events_blocking_pool.pop()
+
+def thread_safe_write(shared_dict, thread_lock, key, values, expiration_milliseconds=None, **kwargs):
+    with thread_lock:
         shared_dict[key] = {"value": values, "expires_at": datetime.now() + timedelta(milliseconds=int(expiration_milliseconds)) if expiration_milliseconds else None}
 
-def thread_safe_read(shared_dict, dict_lock, key):
+def thread_safe_read(shared_dict, thread_lock, key):
     read_time = datetime.now()
-    with dict_lock:
+    with thread_lock:
         print(f"Searching key {key} in dict: {shared_dict} at {read_time}")
         if dict_value := shared_dict.get(key):
             if expired_at := dict_value.get("expires_at"):
