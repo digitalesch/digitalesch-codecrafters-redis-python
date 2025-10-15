@@ -223,7 +223,7 @@ def blpop_command(key: str, timeout: int, address):
 def type_command(args: list[str]):
     data = get_command(args)
     print(f"data is {data}")
-    if data == "$-1\r\n":
+    if data == b"$-1\r\n":
         return encode_simple_string('none')
     if chr(data[0]) == "$":
         return encode_simple_string('string')
