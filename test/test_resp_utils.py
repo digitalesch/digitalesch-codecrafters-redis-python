@@ -13,16 +13,17 @@ def clear_key_before_test():
 
 def send_raw_redis_command(command: list[str]) -> str:
     with socket.create_connection((REDIS_HOST, REDIS_PORT), timeout=3) as sock:
-        sock.sendall(main.encode_resp_command(command))
-        data = sock.recv(4096)
-        return data
+        sent_message = main.encode_resp_command(command)
+        sock.sendall(sent_message)
+        response = sock.recv(4096)
+        print(f"Sent: {sent_message} -> Received: {response}")
+        return response
     
 def run_multiple_commands(args: tuple[list,bytes]):
     clear_key_before_test()
 
     for command, expected_response in args:
         response = send_raw_redis_command(command)
-        print(f"Received: {response}")
         assert response == expected_response
 
 def multi_command_test(test_func):
@@ -73,6 +74,10 @@ def test_complex_xadd():
         (["XADD","grape","1-2","banana","pear"],b'$3\r\n1-2\r\n'),
         (["GET","grape"],b"-ERR WRONGTYPE Operation against a key holding the wrong kind of value\r\n")
     ]
+
+def test_incrementing_xadd_before_reset():
+    print("Executing test_incrementing_xadd_before_reset")
+    assert send_raw_redis_command(["XADD","grape","1-*","orange","apple"]) == b'$3\r\n1-3\r\n'
 
 @multi_command_test
 def test_generating_id_xadd():
