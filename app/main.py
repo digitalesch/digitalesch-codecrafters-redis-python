@@ -332,7 +332,7 @@ def handle_command(args: list[str], address) -> bytes:
     if command == "RESET":
         shared_dict.clear()
         return encode_simple_string("RESETED DATABASE")
-
+ 
 # --- CLIENT HANDLING ---
 def client_thread(connection: socket.socket, address):
     try:
