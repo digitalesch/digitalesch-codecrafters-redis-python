@@ -389,7 +389,6 @@ def thread_safe_read(shared_dict, thread_lock, key):
         return ""
 
 # --- SERVER ---
-
 def start_server(host="127.0.0.1", port=6379):
 
     server = socket.create_server((host, port), reuse_port=True)
