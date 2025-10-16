@@ -2,7 +2,21 @@ import socket
 import threading
 from datetime import datetime, timedelta
 
+# --- THREAD LOCKS ---
+shared_dict = {}
+thread_events_blocking_pool = []
+thread_lock = threading.Lock()
+
 # --- RESP ENCODING / DECODING ---
+def encode_resp_command(args: list[str]):
+    if len(args) == 1:
+        return encode_simple_string(args[0])
+    
+    return encode_array(args)
+
+# function for test purposes to delete key
+def delete_all_keys():
+    shared_dict.clear()
 
 def get_resp_operation(binary_char: bytes):
     types_map = {
@@ -122,7 +136,7 @@ def get_command(args: list[str]) -> dict:
         return {"type": "string", "value": encode_bulk_string(read_value)}
     if type(read_value) == list:
         if type(read_value[0]) == dict:
-            return {"type": "stream", "value": encode_array(read_value)}
+            return {"type": "stream", "value": encode_simple_error("ERR WRONGTYPE Operation against a key holding the wrong kind of value")}
         if len(read_value) > 1:
             return {"type": "array", "value": encode_array(read_value)}
         if len(read_value) == 1:
@@ -226,18 +240,26 @@ def type_command(args: list[str]):
 
 
 def xadd_command(key: str, entry_id: str, values: list[str], **kwargs):
-    temp_dict = {
-        entry_id: {values[i]: values[i+1] for i in range(0,len(values),2)}
-    }
-
+    target_timestamp, target_sequence_num = entry_id.split('-')
+    print(f"VALUES ARE {target_timestamp} {target_sequence_num}")
     if read_value := thread_safe_read(shared_dict, thread_lock, key):
         latest_entry_id = next(iter(read_value[0]))
         source_timestamp, source_sequence_num = latest_entry_id.split('-')
-        target_timestamp, target_sequence_num = entry_id.split('-')
+
+        if target_sequence_num == "*":
+            source_sequence_num = int(source_sequence_num)
+            target_sequence_num = source_sequence_num + 1
+            entry_id = f"{target_timestamp}-{target_sequence_num}"
         if all([target_timestamp == "0",target_sequence_num == "0"]):
             return encode_simple_error("ERR The ID specified in XADD must be greater than 0-0")
         if source_timestamp > target_timestamp or source_sequence_num >= target_sequence_num:
             return encode_simple_error("ERR The ID specified in XADD is equal or smaller than the target stream top item")
+    else:
+        entry_id = f"{target_timestamp}-1"
+
+    temp_dict = {
+        entry_id: {f"{target_timestamp}-{target_sequence_num}": values[i+1] for i in range(0,len(values),2)}
+    }
 
     rpush_command(['RPUSH',key,temp_dict])
     
@@ -307,6 +329,9 @@ def handle_command(args: list[str], address) -> bytes:
             "values": args[3:]
         }
         return xadd_command(**kwargs)
+    if command == "RESET":
+        shared_dict.clear()
+        return encode_simple_string("RESETED DATABASE")
 
 # --- CLIENT HANDLING ---
 def client_thread(connection: socket.socket, address):
@@ -327,11 +352,6 @@ def client_thread(connection: socket.socket, address):
     finally:
         connection.close()
         print(f"[DISCONNECT]: {address}")
-
-# --- THREAD LOCKS ---
-shared_dict = {}
-thread_events_blocking_pool = []
-thread_lock = threading.Lock()
 
 def add_thread_to_blocking_pool(thread_events_blocking_pool: list, event: threading.Event, address):
     with thread_lock:

@@ -17,9 +17,9 @@ messages = [
     # b"*2\r\n$4\r\nTYPE\r\n$5\r\nfruit\r\n",
 
     # tests out the XADD command
-    # b"*7\r\n$4\r\nXADD\r\n$5\r\nmango\r\n$3\r\n0-0\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$3\r\nbar\r\n$3\r\nfoo\r\n",
-    b"*5\r\n$4\r\nXADD\r\n$5\r\ngrape\r\n$3\r\n1-1\r\n$6\r\norange\r\n$5\r\napple\r\n",
-    b"*5\r\n$4\r\nXADD\r\n$5\r\ngrape\r\n$3\r\n1-3\r\n$9\r\npineapple\r\n$6\r\nbanana\r\n",
+    b"*7\r\n$4\r\nXADD\r\n$5\r\nmango\r\n$3\r\n0-0\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$3\r\nbar\r\n$3\r\nfoo\r\n",
+    # b"*5\r\n$4\r\nXADD\r\n$5\r\ngrape\r\n$3\r\n1-1\r\n$6\r\norange\r\n$5\r\napple\r\n",
+    # b"*5\r\n$4\r\nXADD\r\n$5\r\ngrape\r\n$3\r\n1-*\r\n$9\r\npineapple\r\n$6\r\nbanana\r\n",
     # b"*5\r\n$4\r\nXADD\r\n$5\r\nmango\r\n$3\r\n0-2\r\n$3\r\neit\r\n$3\r\nbar\r\n",
     # b"*2\r\n$4\r\nTYPE\r\n$5\r\nmango\r\n",
     # b"*2\r\n$4\r\nTYPE\r\n$5\r\nmangu\r\n",
